@@ -1,57 +1,75 @@
 use std::{
     alloc::{alloc, Layout},
     cell::Cell,
-    mem, ptr,
+    mem,
+    ptr::{self, NonNull},
 };
 
-pub trait IntoBytes {
-    fn into_bytes(self) -> Vec<u8>;
-}
-
 pub struct Arena {
-    start: *mut u8,
+    start: NonNull<u8>,
     size: usize,
     top: Cell<usize>,
 }
 
 impl Arena {
     pub fn new() -> Self {
-        let layout = Layout::array::<u8>(DEFAULT_SIZE).unwrap();
-        let start = unsafe { alloc(layout) };
+        Self::with_capacity(DEFAULT_SIZE)
+    }
+
+    pub fn with_capacity(cap: usize) -> Self {
+        let layout = Layout::array::<u8>(cap).unwrap();
+        let start = unsafe { NonNull::new_unchecked(alloc(layout)) };
 
         Self {
             start,
-            size: DEFAULT_SIZE,
+            size: cap,
             top: Cell::new(0),
         }
     }
 
-    pub fn alloc<T: IntoBytes>(&self, value: T) -> &mut T {
+    #[cfg(debug_assertions)]
+    pub fn top(&self) -> usize {
+        self.top.get()
+    }
+
+    pub fn alloc<T>(&self, value: T) -> &mut T {
         if self.top.get() >= self.size {
-            panic!("Nope");
+            panic!("Out of memory");
         }
 
         let alignment = mem::align_of::<T>();
 
+        let heap_top = (self.start.as_ptr() as usize + self.top.get()) as *mut T;
+
         // Align the memory layout for type T
-        if self.top.get() % alignment != 0 {
-            self.top
-                .replace(self.top.get() + self.top.get() % alignment);
-        }
+        let remainder = heap_top as usize % alignment;
+        let aligned_ptr = if dbg!(remainder) == 0 {
+            heap_top
+        } else {
+            (heap_top as usize - remainder + alignment) as *mut T
+        };
+
+        println!("{}", aligned_ptr as usize - self.start.as_ptr() as usize);
 
         unsafe {
-            let position = self.start.add(self.top.get());
-            self.top.replace(self.top.get() + mem::size_of::<T>());
+            self.top
+                .set(aligned_ptr.add(1) as usize - self.start.as_ptr() as usize);
 
-            let bytes = value.into_bytes();
-            ptr::copy_nonoverlapping(bytes.as_ptr(), position, bytes.len());
-
-            (position as *mut T).as_mut().unwrap()
+            ptr::write(aligned_ptr, value);
+            &mut *aligned_ptr
         }
     }
 
+    /// NOTE: It is undefined behavior to access allocations acquired before calling reset.
     pub fn reset(&mut self) {
-        self.top.replace(0);
+        self.top.set(0);
+    }
+}
+
+impl Drop for Arena {
+    fn drop(&mut self) {
+        let layout = Layout::array::<u8>(self.size).unwrap();
+        unsafe { std::alloc::dealloc(self.start.as_ptr(), layout) }
     }
 }
 
@@ -67,24 +85,11 @@ mod tests {
         age: u32,
     }
 
-    impl IntoBytes for Person {
-        fn into_bytes(self) -> Vec<u8> {
-            self.name
-                .into_iter()
-                .chain(self.age.to_le_bytes())
-                .collect()
-        }
-    }
-
-    impl IntoBytes for f64 {
-        fn into_bytes(self) -> Vec<u8> {
-            self.to_le_bytes().to_vec()
-        }
-    }
-
     #[test]
     fn can_allocate() {
-        let arena = Arena::new();
+        let cap = mem::size_of::<Person>() * 2;
+        let mut arena = Arena::with_capacity(cap * 1000);
+
         let person1 = arena.alloc(Person {
             name: *b"Sun Kit Tsui",
             age: 22,
@@ -114,5 +119,128 @@ mod tests {
                 age: 24,
             }
         );
+
+        dbg!(&arena.top);
+        arena.reset();
+    }
+
+    #[test]
+    fn can_run_in_loop() {
+        let mut arena = Arena::with_capacity(std::mem::size_of::<Person>() * 22);
+
+        for _ in 0..1 {
+            let _person1 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person2 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person3 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person4 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person5 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person6 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person7 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person8 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person9 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person10 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person11 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person12 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person13 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person14 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person15 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person16 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person17 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person18 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person19 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person20 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person21 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+            let _person22 = arena.alloc(Person {
+                name: *b"Sun Kit Tsui",
+                age: 22,
+            });
+            dbg!(&arena.top);
+
+            arena.reset();
+        }
     }
 }
